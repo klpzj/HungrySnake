@@ -1,0 +1,894 @@
+C51 COMPILER V9.59.0.0   MAIN                                                              11/04/2024 15:39:03 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: E:\Keil\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main.ls
+                    -t) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /****************************************************************
+   2           * 文件名: main.c
+   3           * 功能: 贪吃蛇游戏主程序实现
+   4           ****************************************************************/
+   5          
+   6          #include "main.h" 
+   7          #include "Queue.h"
+   8          
+   9          /* 常量数据定义 */
+  10          // LED点阵行扫描数据表
+  11          UINT8 code LED_ROW[32] = {
+  12              0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80,  // 上半部分行选择
+  13              0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,  // 中间填充
+  14              0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,  // 中间填充
+  15              0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80   // 下半部分行选择
+  16          };
+  17          
+  18          // 开始界面图案数据
+  19          UINT8 code START_IMG[32] = {
+  20              0xFF,0xFF,0x7F,0xC0,0xBF,0x9F,0xDF,0xB7,
+  21              0xDF,0x9F,0xDF,0xC0,0xDF,0xFF,0x0F,0xE0,
+  22              0xE7,0xCF,0xF7,0xDF,0xE7,0xCF,0x83,0x83,
+  23              0xFB,0xBF,0xF3,0x9F,0x05,0xC0,0xFF,0xFF
+  24          };
+  25          
+  26          // 分数显示界面图案数据
+  27          UINT8 code SCORE_IMG[32] = {
+  28              0x00,0x00,0x00,0x20,0x04,0x40,0x0A,0x00,
+  29              0xC2,0x0C,0x24,0x12,0x28,0x12,0xC6,0x4C,
+  30              0x00,0x00,0x00,0x00,0x00,0x00,0x02,0x00,
+  31              0x00,0x00,0x00,0x00,0x02,0x00,0x00,0x00
+  32          };
+  33          
+  34          // 方向转换表
+  35          UINT8 code directionTable[4][2] = {
+  36              {1,3},  // 上
+  37              {2,0},  // 右
+  38              {3,1},  // 下
+  39              {0,2}   // 左
+  40          };
+  41          
+  42          // 移动步进表
+  43          UINT8 code stepTable[4][2] = {
+  44              {2,1},  // 上移
+  45              {1,2},  // 右移
+  46              {0,1},  // 下移
+  47              {1,0}   // 左移
+  48          };
+  49          
+  50          // 数字显示点阵数据
+  51          UINT8 code scoreTable[10][5] = {
+  52              {0x07,0x05,0x05,0x05,0x07},  // 0
+  53              {0x04,0x04,0x04,0x04,0x04},  // 1
+  54              {0x07,0x04,0x07,0x01,0x07},  // 2
+C51 COMPILER V9.59.0.0   MAIN                                                              11/04/2024 15:39:03 PAGE 2   
+
+  55              {0x07,0x04,0x07,0x04,0x07},  // 3
+  56              {0x05,0x05,0x07,0x04,0x04},  // 4
+  57              {0x07,0x01,0x07,0x04,0x07},  // 5
+  58              {0x07,0x01,0x07,0x05,0x07},  // 6
+  59              {0x07,0x04,0x04,0x04,0x04},  // 7
+  60              {0x07,0x05,0x07,0x05,0x07},  // 8
+  61              {0x07,0x05,0x07,0x04,0x07}   // 9
+  62          };
+  63          
+  64          // 音乐播放定时器数据表
+  65          UINT8 code th1Table[2][21] = {
+  66              {0xF8,0xF9,0xFA,0xFA,0xFB,0xfa,0xfa,0xFC,0xFC,0xFD,0xFD,0xFD,0xFD,
+  67               0xFE,0xFE,0xFE,0xFE,0xFE,0xFE,0xFE,0xFF},
+  68              {0x8B,0x5B,0x14,0x67,0x04,0x67,0x67,0x43,0xAC,0x09,0x33,0x82,0xC7,
+  69               0x05,0x21,0x56,0x84,0x9A,0xC1,0xE3,0x02}
+  70          };
+  71          
+  72          // 音乐数据表
+  73          UINT8 code musicTable[4][4] = {
+  74              {101,103,105,137},  // 开始音乐
+  75              {111,113,225,225},  // 吃到食物音效
+  76              {101,101,137,137},  // 游戏开始音效
+  77              {107,105,103,131}   // 游戏结束音效
+  78          };
+  79          
+  80          /* 全局变量定义 */
+  81          Queue Snake;                    // 蛇身队列
+  82          UINT8 foodPosition;            // 食物位置
+  83          UINT8 snakeTailPosition;       // 蛇尾位置
+  84          UINT8 snakeTailDirection;      // 蛇尾方向
+  85          UINT8 snakeHeadPosition;       // 蛇头位置
+  86          UINT8 snakeHeadDirection;      // 蛇头方向
+  87          UINT8 ground[32];             // 游戏场地数据
+  88          UINT8 psw0;                   // 状态字0
+  89          UINT8 psw1;                   // 状态字1
+  90          UINT8 score;                  // 分数
+  91          UINT8 th1, tl1;              // 定时器1初值
+  92          
+  93          /*
+  94          状态字说明:
+  95          psw0:(Low → High)
+  96          headDirectionBit 2bits - 头部方向位
+  97          musicPointer     2bit  - 音乐指针
+  98          isLengthen      1bit  - 是否增长
+  99          isStep          1bit  - 是否移动
+ 100          isPause         1bit  - 是否暂停
+ 101          isDrawn         1bit  - 是否已绘制
+ 102          
+ 103          psw1:(Low → High)
+ 104          timer0Counter   3bit  - 定时器0计数
+ 105          isMusic        1bit  - 是否播放音乐
+ 106          musicBeat      2bit  - 音乐节拍
+ 107          beatCount      2bit  - 节拍计数
+ 108          
+ 109          方向编码:
+ 110          00 - 上
+ 111          01 - 右
+ 112          10 - 下
+ 113          11 - 左
+ 114          
+ 115          方向位编码:
+ 116          10 - 右转
+C51 COMPILER V9.59.0.0   MAIN                                                              11/04/2024 15:39:03 PAGE 3   
+
+ 117          11 - 左转
+ 118          00 - 无转向
+ 119          01 - 保留
+ 120          */
+ 121          
+ 122          /****************************************************************
+ 123           * 基础功能函数实现
+ 124           ****************************************************************/
+ 125          
+ 126          /****************************************************************
+ 127           * 函数名: Init
+ 128           * 功能: 系统初始化
+ 129           * 参数: 无
+ 130           * 返回值: 无
+ 131           ****************************************************************/
+ 132          void Init(void)
+ 133          {
+ 134   1          /* 初始化定时器计数器 */
+ 135   1          SetTimer0Counter(TIMER0COUNTER);
+ 136   1          
+ 137   1          /* 配置定时器 */
+ 138   1          TMOD = 0x11;      // 设置定时器0和1为模式1
+ 139   1          TH0 = TH0_N;      // 设置定时器0初值
+ 140   1          TL0 = TL0_N;
+ 141   1          IE = 0x8a;        // 使能定时器0和1中断
+ 142   1          TR0 = 1;          // 启动定时器0
+ 143   1          
+ 144   1          /* 显示开始界面 */
+ 145   1          DrawStartImage();
+ 146   1          SetIsPause(1);
+ 147   1      }
+ 148          
+ 149          /****************************************************************
+ 150           * 函数名: InitGame
+ 151           * 功能: 游戏初始化
+ 152           * 参数: 无
+ 153           * 返回值: 无
+ 154           ****************************************************************/
+ 155          void InitGame(void)
+ 156          {
+ 157   1          UINT8 vector;
+ 158   1          
+ 159   1          /* 清空游戏场地 */
+ 160   1          ClearGround();
+ 161   1          
+ 162   1          /* 初始化状态 */
+ 163   1          SetHeadDirectionBit(0x00);
+ 164   1          SetIsLengthen(0);
+ 165   1          SetIsStep(0);
+ 166   1          SetIsPause(0);
+ 167   1          SetIsDrawn(0);
+ 168   1          score = 0;
+ 169   1          
+ 170   1          /* 初始化蛇队列 */
+ 171   1          QueueEmpty(&Snake.Head, &Snake.Tail, Snake.Buff, &Snake.HeadBit, &Snake.TailBit);
+ 172   1          
+ 173   1          /* 设置蛇的初始位置和方向 */
+ 174   1          snakeTailPosition = PRESTARTPOSITION;
+ 175   1          snakeTailDirection = 0x00;
+ 176   1          snakeHeadPosition = STARTPOSITION;
+ 177   1          snakeHeadDirection = 0x00;
+ 178   1          ground[14] = 0x01;
+C51 COMPILER V9.59.0.0   MAIN                                                              11/04/2024 15:39:03 PAGE 4   
+
+ 179   1          
+ 180   1          /* 设置食物位置 */
+ 181   1          SetFood();
+ 182   1          
+ 183   1          /* 初始化方向队列 */
+ 184   1          vector = GetHeadDirectionBit();
+ 185   1          DataIn(&Snake.Head, Snake.Buff, &Snake.HeadBit, sizeof(Snake.Buff), &vector);
+ 186   1      }
+ 187          
+ 188          /****************************************************************
+ 189           * 函数名: InitScoreImage
+ 190           * 功能: 初始化分数显示界面
+ 191           * 参数: 无
+ 192           * 返回值: 无
+ 193           ****************************************************************/
+ 194          void InitScoreImage(void)
+ 195          {
+ 196   1          DrawScoreImage();
+ 197   1          DrawScore();
+ 198   1          SetIsDrawn(1);
+ 199   1      }
+ 200          
+ 201          /****************************************************************
+ 202           * 函数名: InitMusic
+ 203           * 功能: 初始化音乐播放
+ 204           * 参数: 
+ 205           *   pointer: 音乐序号
+ 206           * 返回值: 无
+ 207           ****************************************************************/
+ 208          void InitMusic(UINT8 pointer)
+ 209          {
+ 210   1          TR1 = 0;              // 停止定时器1
+ 211   1          SetIsMusic(1);        // 启用音乐
+ 212   1          SetMusicBeat(0);      // 重置节拍
+ 213   1          SetBeatCount(0);      // 重置节拍计数
+ 214   1          SetMusicPointer(pointer); // 设置音乐序号
+ 215   1      }
+ 216          
+ 217          /****************************************************************
+ 218           * 函数名: Delay10Us
+ 219           * 功能: 延时函数
+ 220           * 参数: 
+ 221           *   ten_us: 延时时间(10微秒的倍数)
+ 222           * 返回值: 无
+ 223           ****************************************************************/
+ 224          void Delay10Us(UINT16 ten_us)
+ 225          {
+ 226   1          while(ten_us--);
+ 227   1      }
+ 228          
+ 229          /****************************************************************
+ 230           * 位置计算相关函数
+ 231           ****************************************************************/
+ 232          
+ 233          /****************************************************************
+ 234           * 函数名: GetX
+ 235           * 功能: 获取位置的X坐标
+ 236           * 参数: 
+ 237           *   position: 位置编码
+ 238           * 返回值: X坐标值(0-15)
+ 239           ****************************************************************/
+ 240          UINT8 GetX(UINT8 position)
+C51 COMPILER V9.59.0.0   MAIN                                                              11/04/2024 15:39:03 PAGE 5   
+
+ 241          {
+ 242   1          return position >> 4;
+ 243   1      }
+ 244          
+ 245          /****************************************************************
+ 246           * 函数名: GetY
+ 247           * 功能: 获取位置的Y坐标
+ 248           * 参数: 
+ 249           *   position: 位置编码
+ 250           * 返回值: Y坐标值(0-15)
+ 251           ****************************************************************/
+ 252          UINT8 GetY(UINT8 position)
+ 253          {
+ 254   1          return position & 0x0f;
+ 255   1      }
+ 256          
+ 257          /****************************************************************
+ 258           * 函数名: GetPosition
+ 259           * 功能: 根据坐标获取位置编码
+ 260           * 参数: 
+ 261           *   x: X坐标(0-15)
+ 262           *   y: Y坐标(0-15)
+ 263           * 返回值: 位置编码
+ 264           ****************************************************************/
+ 265          UINT8 GetPosition(UINT8 x, UINT8 y)
+ 266          {
+ 267   1          return (x << 4) + y;
+ 268   1      }
+ 269          
+ 270          /****************************************************************
+ 271           * 函数名: GetNextPosition
+ 272           * 功能: 计算下一个位置
+ 273           * 参数: 
+ 274           *   position: 当前位置
+ 275           *   direction: 移动方向
+ 276           * 返回值: 下一个位置的编码
+ 277           ****************************************************************/
+ 278          UINT8 GetNextPosition(UINT8 position, UINT8 direction)
+ 279          {
+ 280   1          UINT8 x = GetX(position);
+ 281   1          UINT8 y = GetY(position);
+ 282   1          
+ 283   1          /* 计算新的X坐标 */
+ 284   1          x = x + stepTable[direction][0] - 1;
+ 285   1          if(x == 0x10) x = 0x00;
+ 286   1          if(x == 0xff) x = 0x0f;
+ 287   1          
+ 288   1          /* 计算新的Y坐标 */
+ 289   1          y = y + stepTable[direction][1] - 1;
+ 290   1          if(y == 0x10) y = 0x00;
+ 291   1          if(y == 0xff) y = 0x0f;
+ 292   1          
+ 293   1          return GetPosition(x, y);
+ 294   1      }
+ 295          
+ 296          /****************************************************************
+ 297           * 状态操作函数实现
+ 298           * 说明：这些函数操作psw0和psw1两个状态字的不同位
+ 299           ****************************************************************/
+ 300          
+ 301          /* 状态获取函数 */
+ 302          UINT8 GetIsDrawn(void)          { return ((psw0 >> 7) & 0x01); }
+C51 COMPILER V9.59.0.0   MAIN                                                              11/04/2024 15:39:03 PAGE 6   
+
+ 303          UINT8 GetIsPause(void)          { return ((psw0 >> 6) & 0x01); }
+ 304          UINT8 GetIsStep(void)           { return ((psw0 >> 5) & 0x01); }
+ 305          UINT8 GetIsLengthen(void)       { return ((psw0 >> 4) & 0x01); }
+ 306          UINT8 GetMusicPointer(void)     { return ((psw0 >> 2) & 0x03); }
+ 307          UINT8 GetHeadDirectionBit(void) { return (psw0 & 0x03); }
+ 308          UINT8 GetBeatCount(void)        { return ((psw1 >> 6) & 0x03); }
+ 309          UINT8 GetMusicBeat(void)        { return ((psw1 >> 4) & 0x03); }
+ 310          UINT8 GetIsMusic(void)          { return ((psw1 >> 3) & 0x01); }
+ 311          UINT8 GetTimer0Counter(void)    { return (psw1 & 0x07); }
+ 312          
+ 313          /* 状态设置函数 */
+ 314          void SetIsDrawn(UINT8 tmp)          { psw0 &= (~(0x01 << 7)); psw0 |= (tmp << 7); }
+ 315          void SetIsPause(UINT8 tmp)          { psw0 &= (~(0x01 << 6)); psw0 |= (tmp << 6); }
+ 316          void SetIsStep(UINT8 tmp)           { psw0 &= (~(0x01 << 5)); psw0 |= (tmp << 5); }
+ 317          void SetIsLengthen(UINT8 tmp)       { psw0 &= (~(0x01 << 4)); psw0 |= (tmp << 4); }
+ 318          void SetMusicPointer(UINT8 tmp)     { psw0 &= (~(0x03 << 2)); psw0 |= (tmp << 2); }
+ 319          void SetHeadDirectionBit(UINT8 tmp) { psw0 &= (~(0x03)); psw0 |= (tmp); }
+ 320          void SetBeatCount(UINT8 tmp)        { psw1 &= (~(0x03 << 6)); psw1 |= (tmp << 6); }
+ 321          void SetMusicBeat(UINT8 tmp)        { psw1 &= (~(0x03 << 4)); psw1 |= (tmp << 4); }
+ 322          void SetIsMusic(UINT8 tmp)          { psw1 &= (~(0x01 << 3)); psw1 |= (tmp << 3); }
+ 323          void SetTimer0Counter(UINT8 tmp)    { psw1 &= (~(0x07)); psw1 |= (tmp); }
+ 324          
+ 325          /****************************************************************
+ 326           * 游戏逻辑相关函数
+ 327           ****************************************************************/
+ 328          
+ 329          /****************************************************************
+ 330           * 函数名: GetIsCollide
+ 331           * 功能: 检测是否发生碰撞
+ 332           * 参数: 无
+ 333           * 返回值: 
+ 334           *   1: 发生碰撞
+ 335           *   0: 未发生碰撞
+ 336           ****************************************************************/
+ 337          UINT8 GetIsCollide(void)
+ 338          {
+ 339   1          UINT8 x, y, tmp, headDirectionBit, nextPosition;
+ 340   1          
+ 341   1          /* 获取下一个位置 */
+ 342   1          headDirectionBit = GetHeadDirectionBit();
+ 343   1          if((headDirectionBit >> 1) == 1)
+ 344   1              nextPosition = GetNextPosition(snakeHeadPosition, 
+ 345   1                  directionTable[snakeHeadDirection][headDirectionBit & 0x01]);
+ 346   1          else
+ 347   1              nextPosition = GetNextPosition(snakeHeadPosition, snakeHeadDirection);
+ 348   1          
+ 349   1          x = GetX(nextPosition);
+ 350   1          y = GetY(nextPosition);
+ 351   1          
+ 352   1          /* 检测是否吃到食物 */
+ 353   1          if(nextPosition == foodPosition)
+ 354   1          {
+ 355   2              InitMusic(1);    // 播放吃食物音效
+ 356   2              SetIsLengthen(1);
+ 357   2              return 0;
+ 358   2          }
+ 359   1          
+ 360   1          /* 检测是否碰到蛇身 */
+ 361   1          if(x <= 7)
+ 362   1          {
+ 363   2              tmp = 0x01 << x;
+ 364   2              return ((UINT8)((ground[2 * y] & tmp) >> x) == 1);
+C51 COMPILER V9.59.0.0   MAIN                                                              11/04/2024 15:39:03 PAGE 7   
+
+ 365   2          }
+ 366   1          if(x >= 8)
+ 367   1          {
+ 368   2              tmp = 0x01 << (x - 8);
+ 369   2              return ((UINT8)((ground[2 * y + 1] & tmp) >> (x - 8)) == 1);
+ 370   2          }
+ 371   1          return 0;
+ 372   1      }
+ 373          
+ 374          /****************************************************************
+ 375           * 函数名: Rand
+ 376           * 功能: 生成随机数
+ 377           * 参数: 无
+ 378           * 返回值: 随机数值
+ 379           ****************************************************************/
+ 380          UINT8 Rand(void)
+ 381          {
+ 382   1          UINT16 a = 1103515245;
+ 383   1          UINT16 c = 12345;
+ 384   1          UINT16 m = 65535;    // 2^16限制在16位以内
+ 385   1          
+ 386   1          return (UINT8)((a * (TH0 + psw0 + psw1 + snakeTailPosition + 
+ 387   1                 snakeTailDirection + snakeHeadPosition + snakeHeadDirection) + c) % m);
+ 388   1      }
+ 389          
+ 390          /****************************************************************
+ 391           * 函数名: Step
+ 392           * 功能: 执行蛇的移动
+ 393           * 参数: 无
+ 394           * 返回值: 无
+ 395           ****************************************************************/
+ 396          void Step(void)
+ 397          {
+ 398   1          UINT8 x, y, tmp, tailDirectionBit, headDirectionBit;
+ 399   1          
+ 400   1          /* 更新蛇头方向和位置 */
+ 401   1          headDirectionBit = GetHeadDirectionBit();
+ 402   1          DataIn(&Snake.Head, Snake.Buff, &Snake.HeadBit, sizeof(Snake.Buff), &headDirectionBit);
+ 403   1          
+ 404   1          if((headDirectionBit >> 1) == 1)
+ 405   1              snakeHeadDirection = directionTable[snakeHeadDirection][headDirectionBit & 0x01];
+ 406   1          
+ 407   1          snakeHeadPosition = GetNextPosition(snakeHeadPosition, snakeHeadDirection);
+ 408   1          
+ 409   1          /* 在游戏场地上绘制新蛇头 */
+ 410   1          x = GetX(snakeHeadPosition);
+ 411   1          y = GetY(snakeHeadPosition);
+ 412   1          if(x <= 7)
+ 413   1          {
+ 414   2              tmp = 0x01 << x;
+ 415   2              ground[2 * y] |= tmp;
+ 416   2          }
+ 417   1          if(x >= 8)
+ 418   1          {
+ 419   2              tmp = 0x01 << (x - 8);
+ 420   2              ground[2 * y + 1] |= tmp;
+ 421   2          }
+ 422   1          
+ 423   1          /* 如果不需要增长，则删除蛇尾 */
+ 424   1          if(GetIsLengthen() == 0)
+ 425   1          {
+ 426   2              DataOut(&Snake.Head, &Snake.Tail, Snake.Buff, &Snake.HeadBit, 
+C51 COMPILER V9.59.0.0   MAIN                                                              11/04/2024 15:39:03 PAGE 8   
+
+ 427   2                      &Snake.TailBit, sizeof(Snake.Buff), &tailDirectionBit);
+ 428   2              
+ 429   2              if((tailDirectionBit >> 1) == 1)
+ 430   2                  snakeTailDirection = directionTable[snakeTailDirection][tailDirectionBit & 0x01];
+ 431   2              
+ 432   2              snakeTailPosition = GetNextPosition(snakeTailPosition, snakeTailDirection);
+ 433   2              
+ 434   2              /* 从游戏场地上删除旧蛇尾 */
+ 435   2              x = GetX(snakeTailPosition);
+ 436   2              y = GetY(snakeTailPosition);
+ 437   2              if(x <= 7)
+ 438   2              {
+ 439   3                  tmp = ~(0x01 << x);
+ 440   3                  ground[2 * y] &= tmp;
+ 441   3              }
+ 442   2              if(x >= 8)
+ 443   2              {
+ 444   3                  tmp = ~(0x01 << (x - 8));
+ 445   3                  ground[2 * y + 1] &= tmp;
+ 446   3              }
+ 447   2          }
+ 448   1      }
+ 449          
+ 450          /****************************************************************
+ 451           * 函数名: SetFood
+ 452           * 功能: 在游戏场地上随机放置食物
+ 453           * 参数: 无
+ 454           * 返回值: 无
+ 455           ****************************************************************/
+ 456          void SetFood(void)
+ 457          {
+ 458   1          UINT8 x, y, tmp, sign = 1;
+ 459   1          
+ 460   1          /* 循环直到找到空位置 */
+ 461   1          while(sign)
+ 462   1          {
+ 463   2              foodPosition = Rand();
+ 464   2              x = GetX(foodPosition);
+ 465   2              y = GetY(foodPosition);
+ 466   2              
+ 467   2              if(x <= 7)
+ 468   2              {
+ 469   3                  tmp = 0x01 << x;
+ 470   3                  if((ground[2 * y] & tmp) == 0)
+ 471   3                  {
+ 472   4                      ground[2 * y] |= tmp;
+ 473   4                      sign = 0;
+ 474   4                  }
+ 475   3              }
+ 476   2              if(x >= 8)
+ 477   2              {
+ 478   3                  tmp = 0x01 << (x - 8);
+ 479   3                  if((ground[2 * y + 1] & tmp) == 0)
+ 480   3                  {
+ 481   4                      ground[2 * y + 1] |= tmp;
+ 482   4                      sign = 0;
+ 483   4                  }
+ 484   3              }
+ 485   2          }
+ 486   1      }
+ 487          
+ 488          /****************************************************************
+C51 COMPILER V9.59.0.0   MAIN                                                              11/04/2024 15:39:03 PAGE 9   
+
+ 489           * 显示相关函数
+ 490           ****************************************************************/
+ 491          
+ 492          /****************************************************************
+ 493           * 函数名: Display
+ 494           * 功能: 刷新LED点阵显示
+ 495           * 参数: 无
+ 496           * 返回值: 无
+ 497           ****************************************************************/
+ 498          void Display(void)
+ 499          {
+ 500   1          UINT8 i;
+ 501   1          for(i = 0; i < 16; i++)
+ 502   1          {
+ 503   2              /* 传送行列选数据 */
+ 504   2              hc595_write_data(LED_ROW[i], LED_ROW[i+16], 
+ 505   2                              ~ground[i * 2], ~ground[i * 2 + 1]);
+ 506   2              
+ 507   2              /* 消影 */
+ 508   2              hc595_write_data(0x00, 0x00, 0x00, 0x00);
+ 509   2          }           
+ 510   1      }
+ 511          
+ 512          /****************************************************************
+ 513           * 函数名: ClearGround
+ 514           * 功能: 清空游戏场地
+ 515           * 参数: 无
+ 516           * 返回值: 无
+ 517           ****************************************************************/
+ 518          void ClearGround(void)
+ 519          {
+ 520   1          UINT8 i;
+ 521   1          for(i = 0; i < 32; i++)
+ 522   1          {
+ 523   2              ground[i] = 0x00;
+ 524   2          }
+ 525   1      }
+ 526          
+ 527          /****************************************************************
+ 528           * 函数名: DrawScore
+ 529           * 功能: 绘制分数
+ 530           * 参数: 无
+ 531           * 返回值: 无
+ 532           ****************************************************************/
+ 533          void DrawScore(void)
+ 534          {
+ 535   1          UINT8 vector, i;
+ 536   1          
+ 537   1          /* 绘制百位数字 */
+ 538   1          vector = score / 100;
+ 539   1          for(i = 0; i < 5; i++)
+ 540   1          {
+ 541   2              ground[20 + 2 * i] |= scoreTable[vector][i] << 4;
+ 542   2          }
+ 543   1          
+ 544   1          /* 绘制十位数字 */
+ 545   1          vector = (score % 100) / 10;
+ 546   1          for(i = 0; i < 5; i++)
+ 547   1          {
+ 548   2              ground[21 + 2 * i] |= scoreTable[vector][i];
+ 549   2          }
+ 550   1          
+C51 COMPILER V9.59.0.0   MAIN                                                              11/04/2024 15:39:03 PAGE 10  
+
+ 551   1          /* 绘制个位数字 */
+ 552   1          vector = score % 10;
+ 553   1          for(i = 0; i < 5; i++)
+ 554   1          {
+ 555   2              ground[21 + 2 * i] |= scoreTable[vector][i] << 4;
+ 556   2          }
+ 557   1      }
+ 558          
+ 559          /****************************************************************
+ 560           * 函数名: DrawScoreImage
+ 561           * 功能: 绘制分数界面
+ 562           * 参数: 无
+ 563           * 返回值: 无
+ 564           ****************************************************************/
+ 565          void DrawScoreImage(void)
+ 566          {
+ 567   1          UINT8 i;
+ 568   1          for(i = 0; i < 32; i++)
+ 569   1          {
+ 570   2              ground[i] = SCORE_IMG[i];
+ 571   2          }
+ 572   1      }
+ 573          
+ 574          /****************************************************************
+ 575           * 函数名: DrawStartImage
+ 576           * 功能: 绘制开始界面
+ 577           * 参数: 无
+ 578           * 返回值: 无
+ 579           ****************************************************************/
+ 580          void DrawStartImage(void)
+ 581          {
+ 582   1          UINT8 i;
+ 583   1          for(i = 0; i < 32; i++)
+ 584   1          {
+ 585   2              ground[i] = START_IMG[i];
+ 586   2          }
+ 587   1      }
+ 588          
+ 589          /****************************************************************
+ 590           * 函数名: hc595_write_data
+ 591           * 功能: 向74HC595写入显示数据
+ 592           * 参数: 
+ 593           *   dat1,dat2: 行选择数据
+ 594           *   dat3,dat4: 列显示数据
+ 595           * 返回值: 无
+ 596           ****************************************************************/
+ 597          void hc595_write_data(UINT8 dat1, UINT8 dat2, UINT8 dat3, UINT8 dat4)
+ 598          {
+ 599   1          UINT8 i;
+ 600   1          
+ 601   1          /* 写入第4组数据 */
+ 602   1          for(i = 0; i < 8; i++)
+ 603   1          {
+ 604   2              SER = dat4 >> 7;    // 优先传输高位
+ 605   2              dat4 <<= 1;
+ 606   2              SRCLK = 0;
+ 607   2              SRCLK = 1;          // 上升沿将数据送入寄存器
+ 608   2          }
+ 609   1          
+ 610   1          /* 写入第3组数据 */
+ 611   1          for(i = 0; i < 8; i++)
+ 612   1          {
+C51 COMPILER V9.59.0.0   MAIN                                                              11/04/2024 15:39:03 PAGE 11  
+
+ 613   2              SER = dat3 >> 7;
+ 614   2              dat3 <<= 1;
+ 615   2              SRCLK = 0;
+ 616   2              SRCLK = 1;
+ 617   2          }
+ 618   1          
+ 619   1          /* 写入第2组数据 */
+ 620   1          for(i = 0; i < 8; i++)
+ 621   1          {
+ 622   2              SER = dat2 >> 7;
+ 623   2              dat2 <<= 1;
+ 624   2              SRCLK = 0;
+ 625   2              SRCLK = 1;
+ 626   2          }
+ 627   1          
+ 628   1          /* 写入第1组数据 */
+ 629   1          for(i = 0; i < 8; i++)
+ 630   1          {
+ 631   2              SER = dat1 >> 7;
+ 632   2              dat1 <<= 1;
+ 633   2              SRCLK = 0;
+ 634   2              SRCLK = 1;
+ 635   2          }
+ 636   1          
+ 637   1          /* 输出数据 */
+ 638   1          RCLK = 1;
+ 639   1          Delay10Us(1);
+ 640   1          RCLK = 0;
+ 641   1      }
+ 642          
+ 643          /****************************************************************
+ 644           * 按键处理函数
+ 645           ****************************************************************/
+ 646          
+ 647          /****************************************************************
+ 648           * 函数名: KeyCatch
+ 649           * 功能: 游戏中的按键处理
+ 650           * 参数: 无
+ 651           * 返回值: 无
+ 652           ****************************************************************/
+ 653          void KeyCatch(void)
+ 654          {
+ 655   1          /* 检测上键 */
+ 656   1          P1 = 0xef;
+ 657   1          if (L1 == 0)
+ 658   1          {
+ 659   2              if(snakeHeadDirection == 0x02) SetHeadDirectionBit(0x02); 
+ 660   2              if(snakeHeadDirection == 0x00) SetHeadDirectionBit(0x03); 
+ 661   2          }
+ 662   1          Delay10Us(1);
+ 663   1          
+ 664   1          /* 检测左右键 */
+ 665   1          P1 = 0xdf;
+ 666   1          if (L0 == 0)
+ 667   1          {
+ 668   2              if(snakeHeadDirection == 0x01) SetHeadDirectionBit(0x02); 
+ 669   2              if(snakeHeadDirection == 0x03) SetHeadDirectionBit(0x03); 
+ 670   2          }
+ 671   1          if (L2 == 0)
+ 672   1          {
+ 673   2              if(snakeHeadDirection == 0x03) SetHeadDirectionBit(0x02); 
+ 674   2              if(snakeHeadDirection == 0x01) SetHeadDirectionBit(0x03); 
+C51 COMPILER V9.59.0.0   MAIN                                                              11/04/2024 15:39:03 PAGE 12  
+
+ 675   2          }
+ 676   1          Delay10Us(1);
+ 677   1          
+ 678   1          /* 检测下键 */
+ 679   1          P1 = 0xbf;
+ 680   1          if (L1 == 0)
+ 681   1          {
+ 682   2              if(snakeHeadDirection == 0x00) SetHeadDirectionBit(0x02); 
+ 683   2              if(snakeHeadDirection == 0x02) SetHeadDirectionBit(0x03); 
+ 684   2          }
+ 685   1          Delay10Us(1);
+ 686   1      }
+ 687          
+ 688          /****************************************************************
+ 689           * 函数名: KeyCatchMid
+ 690           * 功能: 游戏开始/结束时的按键处理
+ 691           * 参数: 无
+ 692           * 返回值: 无
+ 693           ****************************************************************/
+ 694          void KeyCatchMid(void)
+ 695          {
+ 696   1          P1 = 0xdf;
+ 697   1          if (L1 == 0)
+ 698   1          {
+ 699   2              SetIsPause(0);
+ 700   2              InitMusic(2);
+ 701   2              InitGame();
+ 702   2          } 
+ 703   1      }
+ 704          
+ 705          /****************************************************************
+ 706           * 中断处理函数
+ 707           ****************************************************************/
+ 708          
+ 709          /****************************************************************
+ 710           * 函数名: Timer0Routine
+ 711           * 功能: 定时器0中断处理
+ 712           * 参数: 无
+ 713           * 返回值: 无
+ 714           ****************************************************************/
+ 715          void Timer0Routine(void) interrupt 1
+ 716          {
+ 717   1          UINT8 soundCode;
+ 718   1          
+ 719   1          /* 更新定时器计数 */
+ 720   1          SetTimer0Counter(GetTimer0Counter() - 1);
+ 721   1          TH0 = TH0_N;
+ 722   1          TL0 = TL0_N;
+ 723   1          
+ 724   1          /* 检查是否需要移动蛇 */
+ 725   1          if(GetTimer0Counter() == 0)
+ 726   1          {
+ 727   2              SetTimer0Counter(TIMER0COUNTER);
+ 728   2              SetIsStep(1);
+ 729   2          }
+ 730   1          
+ 731   1          /* 处理音乐播放 */
+ 732   1          if(GetIsMusic() == 1)
+ 733   1          {
+ 734   2              soundCode = musicTable[GetMusicPointer()][GetMusicBeat()];
+ 735   2              
+ 736   2              if(GetBeatCount() == 0)
+C51 COMPILER V9.59.0.0   MAIN                                                              11/04/2024 15:39:03 PAGE 13  
+
+ 737   2              {
+ 738   3                  TR1 = 0;
+ 739   3                  th1 = th1Table[0][(soundCode % 10) + (7 * (soundCode / 100)) - 1];
+ 740   3                  tl1 = th1Table[1][(soundCode % 10) + (7 * (soundCode / 100)) - 1];
+ 741   3                  TH1 = th1;
+ 742   3                  TL1 = tl1;
+ 743   3                  TR1 = 1;
+ 744   3              }
+ 745   2      
+ 746   2              if(GetBeatCount() < ((soundCode / 10) % 10))
+ 747   2              {
+ 748   3                  SetBeatCount(GetBeatCount() + 1);
+ 749   3              }
+ 750   2              else 
+ 751   2              {
+ 752   3                  SetBeatCount(0);
+ 753   3                  if(GetMusicBeat() < 3)
+ 754   3                  {
+ 755   4                      SetMusicBeat(GetMusicBeat() + 1); 
+ 756   4                  }
+ 757   3                  else
+ 758   3                  {
+ 759   4                      SetIsMusic(0); // 音乐播放完毕
+ 760   4                  }
+ 761   3              }
+ 762   2          }
+ 763   1          else
+ 764   1          {
+ 765   2              TR1 = 0;    
+ 766   2              BUZ = 1;
+ 767   2          }
+ 768   1      }    
+ 769          
+ 770          /****************************************************************
+ 771           * 函数名: Timer1Routine
+ 772           * 功能: 定时器1中断处理(用于产生音调)
+ 773           * 参数: 无
+ 774           * 返回值: 无
+ 775           ****************************************************************/
+ 776          void Timer1Routine(void) interrupt 3
+ 777          {
+ 778   1          BUZ = !BUZ;
+ 779   1          TH1 = th1;
+ 780   1          TL1 = tl1;
+ 781   1      }
+ 782          
+ 783          /****************************************************************
+ 784           * 函数名: main
+ 785           * 功能: 主函数
+ 786           * 参数: 无
+ 787           * 返回值: 无
+ 788           ****************************************************************/
+ 789          void main(void)
+ 790          {
+ 791   1          /* 系统初始化 */
+ 792   1          Init();
+ 793   1          InitMusic(0);
+ 794   1          
+ 795   1          /* 等待开始游戏 */
+ 796   1          while(GetIsPause() == 1)
+ 797   1          {
+ 798   2              KeyCatchMid();
+C51 COMPILER V9.59.0.0   MAIN                                                              11/04/2024 15:39:03 PAGE 14  
+
+ 799   2              Display();
+ 800   2          }
+ 801   1          
+ 802   1          /* 主游戏循环 */
+ 803   1          while(1)
+ 804   1          {
+ 805   2              if(GetIsPause() == 0)
+ 806   2              {
+ 807   3                  /* 游戏进行中 */
+ 808   3                  KeyCatch();
+ 809   3                  if(GetIsStep() == 1)
+ 810   3                  {
+ 811   4                      if(GetIsCollide() == 1)
+ 812   4                      {
+ 813   5                          /* 发生碰撞，游戏结束 */
+ 814   5                          InitMusic(3);
+ 815   5                          SetIsPause(1);
+ 816   5                      }
+ 817   4                      else
+ 818   4                      {
+ 819   5                          /* 移动蛇 */
+ 820   5                          Step();
+ 821   5                          if(GetIsLengthen() == 1)
+ 822   5                          {
+ 823   6                              SetFood();
+ 824   6                              score++;
+ 825   6                          }
+ 826   5                          SetHeadDirectionBit(0x00);
+ 827   5                          SetIsStep(0);
+ 828   5                          SetIsLengthen(0);
+ 829   5                      }
+ 830   4                  }
+ 831   3                  Display();
+ 832   3              }
+ 833   2              else
+ 834   2              {
+ 835   3                  /* 游戏暂停/结束状态 */
+ 836   3                  if(GetIsDrawn() == 0)
+ 837   3                  {
+ 838   4                      InitScoreImage();
+ 839   4                  }
+ 840   3                  KeyCatchMid();
+ 841   3                  Display();
+ 842   3              }
+ 843   2          }
+ 844   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2310    ----
+   CONSTANT SIZE    =    220    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     66      21
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

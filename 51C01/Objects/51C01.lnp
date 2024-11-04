@@ -1,0 +1,5 @@
+".\Objects\STARTUP.obj",
+".\Objects\main.obj",
+".\Objects\Queue.obj" 
+TO ".\Objects\51C01" 
+PRINT(".\Listings\51C01.m51")
