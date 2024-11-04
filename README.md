@@ -1,13 +1,13 @@
 # HungrySnake
 A HungrySnake project based on AT89C51
 
-#Suitable for Prechin - 7
+# Suitable for Prechin - 7
 
-#Matrix Key board definition:
+# Matrix Key board definition:
 
-| * ↑ * * |
-| ← O → * |
-| * ↓ * * |
-| * * * * |
-
+| * ↑ * * |<br>
+| ← O → * |<br>
+| * ↓ * * |<br>
+| * * * * |<br>
+<br>
 O： Start Button
